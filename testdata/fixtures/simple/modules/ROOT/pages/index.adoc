@@ -1,0 +1,9 @@
+= Index Page
+
+Welcome to the simple component.
+
+xref:guide.adoc[Guide]
+
+include::partial$snippet.adoc[]
+
+image::diagram.png[Diagram]

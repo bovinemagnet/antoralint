@@ -1,0 +1,5 @@
+= Settings Page
+
+Admin settings.
+
+xref:ROOT:index.adoc[Home]
