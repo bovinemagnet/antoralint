@@ -52,7 +52,11 @@ func (r *Resolver) Resolve(ref *model.Reference) *Result {
 }
 
 // resolveXref resolves an xref: reference.
-// Antora xref format: [version@][component:][[module:]page[.adoc]][#fragment]
+// Antora xref format: [version@][component:module:]page[.adoc][#fragment]
+// Colon count determines how many qualifiers are present:
+//   - 0 colons: page only (current component + module)
+//   - 1 colon:  module:page (current component, specified module)
+//   - 2 colons: component:module:page (explicit component and module)
 func (r *Resolver) resolveXref(ref *model.Reference) *Result {
 	result := &Result{Ref: ref}
 	target := ref.Target
@@ -68,18 +72,23 @@ func (r *Resolver) resolveXref(ref *model.Reference) *Result {
 		target = target[idx+1:]
 	}
 
-	// Handle component: and optional module:
-	if colonIdx := strings.Index(target, ":"); colonIdx >= 0 {
-		component = target[:colonIdx]
-		target = target[colonIdx+1:]
-		if colonIdx2 := strings.Index(target, ":"); colonIdx2 >= 0 {
-			module = target[:colonIdx2]
-			pagePath = target[colonIdx2+1:]
-		} else {
-			pagePath = target
-		}
-	} else {
+	// Count colons to determine reference form
+	colonCount := strings.Count(target, ":")
+	switch colonCount {
+	case 0:
+		// Just page: current component + module
 		pagePath = target
+	case 1:
+		// module:page — same component, different module
+		parts := strings.SplitN(target, ":", 2)
+		module = parts[0]
+		pagePath = parts[1]
+	default:
+		// component:module:page
+		parts := strings.SplitN(target, ":", 3)
+		component = parts[0]
+		module = parts[1]
+		pagePath = parts[2]
 	}
 
 	// Normalize page path - add .adoc if no extension present
@@ -264,10 +273,10 @@ func (r *Resolver) resolveAntoraImageRef(ref *model.Reference, target string) *R
 			return result
 		}
 	} else {
-		// component:path form
+		// module:path form (single colon, no $ — cross-module image in same component)
 		parts := strings.SplitN(target, ":", 2)
 		if len(parts) == 2 {
-			component = parts[0]
+			module = parts[0]
 			target = parts[1]
 		}
 		logicalID := version + "@" + component + ":" + module + ":images$" + target

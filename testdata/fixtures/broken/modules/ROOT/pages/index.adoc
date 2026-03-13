@@ -1,0 +1,11 @@
+= Index
+
+This page has broken references.
+
+xref:missing-page.adoc[Missing Page]
+
+include::partial$missing-snippet.adoc[]
+
+image::missing-image.png[Missing Image]
+
+xref:{product-page}[Unresolved Attribute]

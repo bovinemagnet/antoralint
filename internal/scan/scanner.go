@@ -17,7 +17,7 @@ var (
 	// image::target[alt] (block)
 	reImage = regexp.MustCompile(`image::([^\[]+)\[`)
 	// image:target[alt] (inline, not followed by another colon)
-	reImageInline = regexp.MustCompile(`image:([^:][^\[]+)\[`)
+	reImageInline = regexp.MustCompile(`image:([^:\[]+)\[`)
 )
 
 // blockDelimiters are line content that toggles "in block" state.
