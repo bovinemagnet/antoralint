@@ -1,0 +1,7 @@
+= Guide Page
+
+This is the guide.
+
+xref:index.adoc[Back to Index]
+
+xref:admin:settings.adoc[Admin Settings]
