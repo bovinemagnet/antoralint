@@ -1,0 +1,3 @@
+= Admin Settings
+
+This is the admin settings page for component B.

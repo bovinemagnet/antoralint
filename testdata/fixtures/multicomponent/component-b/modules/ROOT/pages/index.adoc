@@ -1,0 +1,5 @@
+= Component B Index
+
+This page links back to component A.
+
+xref:comp-a::index.adoc[Back to Component A]

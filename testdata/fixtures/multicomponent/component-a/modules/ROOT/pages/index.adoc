@@ -1,0 +1,13 @@
+= Component A Index
+
+This page links to component B.
+
+xref:comp-b::index.adoc[Component B Index]
+
+xref:comp-b:admin:settings.adoc[Component B Admin Settings]
+
+xref:comp-b::nonexistent.adoc[Broken Cross-Component Link]
+
+image::logo.png[Logo]
+
+link:{attachmentsdir}/readme.pdf[Download README]

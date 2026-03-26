@@ -20,6 +20,7 @@ func setupTestIndex(t *testing.T) (*index.Index, string) {
 	createFile(t, root, "modules/ROOT/partials/snippet.adoc")
 	createFile(t, root, "modules/ROOT/images/diagram.png")
 	createFile(t, root, "modules/admin/pages/settings.adoc")
+	createFile(t, root, "modules/ROOT/attachments/report.pdf")
 
 	idx, err := index.Build(root, []*repo.Component{comp})
 	if err != nil {
@@ -144,6 +145,89 @@ func TestResolveImage_Missing(t *testing.T) {
 	result := r.Resolve(ref)
 	if result.Found {
 		t.Error("expected not to find missing.png")
+	}
+}
+
+func TestResolveXref_CrossComponentDefaultModule(t *testing.T) {
+	// component::page form (empty module defaults to ROOT)
+	root := t.TempDir()
+	compA := &repo.Component{Name: "comp-a", Version: "1.0", RootDir: root + "/comp-a"}
+	compB := &repo.Component{Name: "comp-b", Version: "1.0", RootDir: root + "/comp-b"}
+	createFile(t, root+"/comp-a", "modules/ROOT/pages/index.adoc")
+	createFile(t, root+"/comp-b", "modules/ROOT/pages/index.adoc")
+
+	idx, err := index.Build(root, []*repo.Component{compA, compB})
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	r := New(idx)
+
+	ref := &model.Reference{
+		RefType:      model.RefTypeXref,
+		Target:       "comp-b::index.adoc",
+		SrcComponent: "comp-a",
+		SrcVersion:   "1.0",
+		SrcModule:    "ROOT",
+		SrcFamily:    model.FamilyPages,
+	}
+	result := r.Resolve(ref)
+	if !result.Found {
+		t.Error("expected to resolve comp-b::index.adoc (cross-component, default ROOT module)")
+	}
+}
+
+func TestResolveAttachment_Found(t *testing.T) {
+	idx, _ := setupTestIndex(t)
+	r := New(idx)
+
+	ref := &model.Reference{
+		RefType:      model.RefTypeAttachment,
+		Target:       "report.pdf",
+		SrcComponent: "mycomp",
+		SrcVersion:   "1.0",
+		SrcModule:    "ROOT",
+		SrcFamily:    model.FamilyPages,
+	}
+	result := r.Resolve(ref)
+	if !result.Found {
+		t.Error("expected to find report.pdf in attachments")
+	}
+}
+
+func TestResolveAttachment_Missing(t *testing.T) {
+	idx, _ := setupTestIndex(t)
+	r := New(idx)
+
+	ref := &model.Reference{
+		RefType:      model.RefTypeAttachment,
+		Target:       "nonexistent.pdf",
+		SrcComponent: "mycomp",
+		SrcVersion:   "1.0",
+		SrcModule:    "ROOT",
+		SrcFamily:    model.FamilyPages,
+	}
+	result := r.Resolve(ref)
+	if result.Found {
+		t.Error("expected not to find nonexistent.pdf")
+	}
+}
+
+func TestResolveXref_FamilyPrefix(t *testing.T) {
+	idx, _ := setupTestIndex(t)
+	r := New(idx)
+
+	// xref:attachment$report.pdf[Download] should resolve via attachments family
+	ref := &model.Reference{
+		RefType:      model.RefTypeXref,
+		Target:       "attachment$report.pdf",
+		SrcComponent: "mycomp",
+		SrcVersion:   "1.0",
+		SrcModule:    "ROOT",
+		SrcFamily:    model.FamilyPages,
+	}
+	result := r.Resolve(ref)
+	if !result.Found {
+		t.Error("expected to resolve xref:attachment$report.pdf via attachments family")
 	}
 }
 

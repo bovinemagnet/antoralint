@@ -1,0 +1,5 @@
+= Case Mismatch Test
+
+xref:Guide.adoc[Guide with wrong case]
+
+xref:guide.adoc[Guide with correct case]

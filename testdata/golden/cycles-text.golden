@@ -1,0 +1,1 @@
+ERROR include-cycle modules/ROOT/partials/a.adoc:1 include cycle detected: modules/ROOT/partials/a.adoc -> modules/ROOT/partials/b.adoc -> modules/ROOT/partials/a.adoc

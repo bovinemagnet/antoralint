@@ -84,11 +84,32 @@ func (r *Resolver) resolveXref(ref *model.Reference) *Result {
 		module = parts[0]
 		pagePath = parts[1]
 	default:
-		// component:module:page
+		// component:module:page or component::page (empty module = ROOT)
 		parts := strings.SplitN(target, ":", 3)
 		component = parts[0]
 		module = parts[1]
 		pagePath = parts[2]
+		if module == "" {
+			module = "ROOT"
+		}
+	}
+
+	// If the pagePath contains a $ it is a family-qualified reference (e.g. attachment$report.pdf).
+	// Delegate to the Antora family resolver which already handles this syntax.
+	if strings.Contains(pagePath, "$") {
+		familyRef := &model.Reference{
+			SourceFile:   ref.SourceFile,
+			Line:         ref.Line,
+			Column:       ref.Column,
+			RawText:      ref.RawText,
+			RefType:      ref.RefType,
+			Target:       version + "@" + component + ":" + module + ":" + pagePath,
+			SrcComponent: component,
+			SrcVersion:   version,
+			SrcModule:    module,
+			SrcFamily:    ref.SrcFamily,
+		}
+		return r.resolveAntoraFamilyInclude(familyRef, pagePath)
 	}
 
 	// Normalize page path - add .adoc if no extension present

@@ -29,6 +29,7 @@ const (
 	RefTypeInclude    RefType = "include"
 	RefTypeImage      RefType = "image"
 	RefTypeAttachment RefType = "attachment"
+	RefTypeLink       RefType = "link"
 )
 
 // Resource represents a discovered repository resource.

@@ -1,0 +1,4 @@
+ERROR broken-xref modules/ROOT/pages/index.adoc:5 xref target not found: missing-page.adoc
+ERROR broken-include modules/ROOT/pages/index.adoc:7 include target not found: partial$missing-snippet.adoc
+ERROR broken-image modules/ROOT/pages/index.adoc:9 image target not found: missing-image.png
+WARN  unresolved-attribute modules/ROOT/pages/index.adoc:11 target contains unresolved attribute: {product-page}

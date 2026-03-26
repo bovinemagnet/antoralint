@@ -1,0 +1,97 @@
+{
+  "version": "2.1.0",
+  "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "informationUri": "https://github.com/bovinemagnet/antoralint",
+          "name": "adoclint",
+          "version": "0.1.0"
+        }
+      },
+      "results": [
+        {
+          "ruleId": "broken-xref",
+          "level": "error",
+          "message": {
+            "text": "xref target not found: missing-page.adoc"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "modules/ROOT/pages/index.adoc"
+                },
+                "region": {
+                  "startLine": 5,
+                  "startColumn": 1
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "broken-include",
+          "level": "error",
+          "message": {
+            "text": "include target not found: partial$missing-snippet.adoc"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "modules/ROOT/pages/index.adoc"
+                },
+                "region": {
+                  "startLine": 7,
+                  "startColumn": 1
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "broken-image",
+          "level": "error",
+          "message": {
+            "text": "image target not found: missing-image.png"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "modules/ROOT/pages/index.adoc"
+                },
+                "region": {
+                  "startLine": 9,
+                  "startColumn": 1
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "unresolved-attribute",
+          "level": "warning",
+          "message": {
+            "text": "target contains unresolved attribute: {product-page}"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "modules/ROOT/pages/index.adoc"
+                },
+                "region": {
+                  "startLine": 11,
+                  "startColumn": 1
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,38 @@
+[
+  {
+    "severity": "error",
+    "ruleId": "broken-xref",
+    "file": "modules/ROOT/pages/index.adoc",
+    "line": 5,
+    "column": 1,
+    "message": "xref target not found: missing-page.adoc",
+    "target": "missing-page.adoc"
+  },
+  {
+    "severity": "error",
+    "ruleId": "broken-include",
+    "file": "modules/ROOT/pages/index.adoc",
+    "line": 7,
+    "column": 1,
+    "message": "include target not found: partial$missing-snippet.adoc",
+    "target": "partial$missing-snippet.adoc"
+  },
+  {
+    "severity": "error",
+    "ruleId": "broken-image",
+    "file": "modules/ROOT/pages/index.adoc",
+    "line": 9,
+    "column": 1,
+    "message": "image target not found: missing-image.png",
+    "target": "missing-image.png"
+  },
+  {
+    "severity": "warning",
+    "ruleId": "unresolved-attribute",
+    "file": "modules/ROOT/pages/index.adoc",
+    "line": 11,
+    "column": 1,
+    "message": "target contains unresolved attribute: {product-page}",
+    "target": "{product-page}"
+  }
+]

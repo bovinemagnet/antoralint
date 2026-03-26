@@ -5,8 +5,11 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
+	"github.com/bovinemagnet/antoralint/internal/cycles"
 	"github.com/bovinemagnet/antoralint/internal/index"
+	"github.com/bovinemagnet/antoralint/internal/linkcheck"
 	"github.com/bovinemagnet/antoralint/internal/model"
 	"github.com/bovinemagnet/antoralint/internal/report"
 	"github.com/bovinemagnet/antoralint/internal/repo"
@@ -27,11 +30,14 @@ func main() {
 	}
 
 	var (
-		outputFormat string
-		failOn       string
-		verbose      bool
-		excludes     []string
-		includes     []string
+		outputFormat  string
+		failOn        string
+		verbose       bool
+		excludes      []string
+		includes      []string
+		externalLinks bool
+		timeout       time.Duration
+		concurrency   int
 	)
 
 	scanCmd := &cobra.Command{
@@ -71,8 +77,13 @@ func main() {
 			}
 
 			// Scan .adoc files and collect diagnostics
+			scanOpts := scan.ScanOptions{
+				ExtractExternalLinks: externalLinks,
+			}
 			resolver := resolve.New(idx)
 			var allDiagnostics []*model.Diagnostic
+			var includeResults []*resolve.Result
+			var linkRefs []*model.Reference
 
 			for _, res := range idx.Resources {
 				if res.Family != model.FamilyPages && res.Family != model.FamilyPartials {
@@ -88,21 +99,59 @@ func main() {
 					continue
 				}
 
-				refs, err := scan.ScanFile(res.AbsPath, res.Component, res.Version, res.Module, res.Family)
+				refs, err := scan.ScanFileWithOptions(res.AbsPath, res.Component, res.Version, res.Module, res.Family, scanOpts)
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "WARNING: could not scan %s: %v\n", res.RelPath, err)
 					continue
 				}
 
 				for _, ref := range refs {
+					absSourceFile := ref.SourceFile
 					// Make file path relative to repo root for output
 					relPath, _ := filepath.Rel(absRoot, ref.SourceFile)
 					ref.SourceFile = filepath.ToSlash(relPath)
 
+					// External links are checked separately
+					if ref.RefType == model.RefTypeLink {
+						linkRefs = append(linkRefs, ref)
+						continue
+					}
+
 					result := resolver.Resolve(ref)
 					diags := rules.Evaluate(result)
 					allDiagnostics = append(allDiagnostics, diags...)
+
+					// Collect resolved include results for cycle detection (using absolute paths)
+					if ref.RefType == model.RefTypeInclude && result.Found {
+						cycleResult := &resolve.Result{
+							Ref: &model.Reference{
+								SourceFile: absSourceFile,
+								RefType:    ref.RefType,
+								Target:     ref.Target,
+							},
+							Resource: result.Resource,
+							Found:    true,
+						}
+						includeResults = append(includeResults, cycleResult)
+					}
 				}
+			}
+
+			// Detect include cycles
+			graph := cycles.Build(includeResults)
+			detectedCycles := graph.DetectCycles()
+			if len(detectedCycles) > 0 {
+				cycleDiags := rules.EvaluateCycles(detectedCycles, absRoot)
+				allDiagnostics = append(allDiagnostics, cycleDiags...)
+			}
+
+			// Check external links
+			if externalLinks && len(linkRefs) > 0 {
+				if verbose {
+					fmt.Fprintf(os.Stderr, "Checking %d external link(s)...\n", len(linkRefs))
+				}
+				linkDiags := checkExternalLinks(linkRefs, concurrency, timeout)
+				allDiagnostics = append(allDiagnostics, linkDiags...)
 			}
 
 			// Write output
@@ -125,12 +174,44 @@ func main() {
 	scanCmd.Flags().BoolVar(&verbose, "verbose", false, "Enable verbose output")
 	scanCmd.Flags().StringArrayVar(&excludes, "exclude", nil, "Exclude path patterns")
 	scanCmd.Flags().StringArrayVar(&includes, "include", nil, "Include path patterns")
+	scanCmd.Flags().BoolVar(&externalLinks, "external-links", false, "Enable external link checking")
+	scanCmd.Flags().DurationVar(&timeout, "timeout", 10*time.Second, "Timeout per external link check")
+	scanCmd.Flags().IntVar(&concurrency, "concurrency", 5, "Maximum concurrent external link checks")
 
 	rootCmd.AddCommand(scanCmd)
 
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(2)
 	}
+}
+
+// checkExternalLinks validates external URLs and returns diagnostics.
+// URLs are deduplicated — each unique URL is checked once, but diagnostics
+// are emitted for every reference that uses it.
+func checkExternalLinks(refs []*model.Reference, concurrency int, timeout time.Duration) []*model.Diagnostic {
+	// Deduplicate URLs
+	urlToRefs := make(map[string][]*model.Reference)
+	var uniqueURLs []string
+	for _, ref := range refs {
+		if _, exists := urlToRefs[ref.Target]; !exists {
+			uniqueURLs = append(uniqueURLs, ref.Target)
+		}
+		urlToRefs[ref.Target] = append(urlToRefs[ref.Target], ref)
+	}
+
+	checker := linkcheck.New(concurrency, timeout)
+	results := checker.Check(uniqueURLs)
+
+	var diags []*model.Diagnostic
+	for i, result := range results {
+		url := uniqueURLs[i]
+		for _, ref := range urlToRefs[url] {
+			if d := rules.EvaluateLinkResult(ref, result); d != nil {
+				diags = append(diags, d)
+			}
+		}
+	}
+	return diags
 }
 
 func exitWithCode(diagnostics []*model.Diagnostic, failOn string) error {

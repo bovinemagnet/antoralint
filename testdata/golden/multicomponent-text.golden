@@ -1,0 +1,1 @@
+ERROR broken-xref component-a/modules/ROOT/pages/index.adoc:9 xref target not found: comp-b::nonexistent.adoc
