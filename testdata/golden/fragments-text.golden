@@ -1,0 +1,2 @@
+WARN  broken-fragment modules/ROOT/pages/index.adoc:14 fragment not found in target: target.adoc#nonexistent-section
+WARN  broken-fragment modules/ROOT/pages/index.adoc:15 fragment not found in target: target.adoc#_typo_section

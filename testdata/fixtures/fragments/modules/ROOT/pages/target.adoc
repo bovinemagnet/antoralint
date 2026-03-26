@@ -1,0 +1,17 @@
+= Target Page
+
+== First Section
+
+Some content here.
+
+=== Sub Section
+
+More content.
+
+[[custom-anchor]]
+A paragraph with a custom anchor.
+
+[#shorthand-id]
+Another paragraph.
+
+This has an anchor:inline-anchor[] in it.

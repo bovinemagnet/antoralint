@@ -1,0 +1,5 @@
+= Main Page
+
+This page includes a partial:
+
+include::partial$wrapper.adoc[]

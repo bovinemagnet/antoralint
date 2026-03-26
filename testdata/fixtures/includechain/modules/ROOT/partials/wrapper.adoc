@@ -1,0 +1,5 @@
+== Wrapper Section
+
+This partial has a broken reference:
+
+xref:nonexistent-page.adoc[Missing Page]

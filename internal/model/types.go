@@ -59,14 +59,22 @@ type Reference struct {
 	SrcFamily    Family
 }
 
+// IncludeStep represents one step in an include chain,
+// showing which file included the diagnostic's file.
+type IncludeStep struct {
+	File string `json:"file"`
+	Line int    `json:"line"`
+}
+
 // Diagnostic represents a reported issue.
 type Diagnostic struct {
-	Severity Severity
-	RuleID   string
-	Message  string
-	File     string
-	Line     int
-	Column   int
-	Target   string
-	Fix      string
+	Severity     Severity
+	RuleID       string
+	Message      string
+	File         string
+	Line         int
+	Column       int
+	Target       string
+	Fix          string
+	IncludeChain []IncludeStep
 }

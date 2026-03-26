@@ -1,6 +1,6 @@
 # Product Requirements Document: Antora/AsciiDoc Repository Linter
 
-> **Implementation Status as of 2026-03-13:** The MVP and Milestones 1–3 are substantially complete. The tool is functional with a 6-stage pipeline, 6 implemented rules, 3 output formats (text, JSON, SARIF), and 14 unit tests across 4 packages. See the [Implementation Status](#25-implementation-status) section for full details.
+> **Implementation Status as of 2026-03-26:** The MVP and Milestones 1–3 are complete. The tool is functional with a 6-stage pipeline, 9 implemented rules, 3 output formats (text, JSON, SARIF), 8 CLI flags, and 5 fixture repositories. See the [Implementation Status](#25-implementation-status) section for full details.
 
 ## 1. Overview
 
@@ -106,8 +106,8 @@ The v1 product will support:
   - `xref:` — **implemented** (same-module, cross-module, cross-component, with version/fragment support)
   - `include::` — **implemented** (relative paths, Antora family form with `$` prefix)
   - `image::` — **implemented** (block and inline forms, cross-module support)
-  - attachment-style references where feasible — **partially implemented** (type defined in model, resolver implemented, but no scanner pattern extracts attachment references from `.adoc` files)
-- optional validation of external HTTP/HTTPS links — **not yet implemented**
+  - attachment-style references where feasible — **implemented** (scanner extracts `link:{attachmentsdir}/...` patterns, resolver validates against index)
+- optional validation of external HTTP/HTTPS links — **implemented** (opt-in via `--external-links` flag with `--timeout` and `--concurrency` controls)
 - text and machine-readable output formats — **implemented** (text, JSON, and SARIF 2.1.0)
 - non-zero exit codes for CI failure conditions — **implemented**
 
@@ -193,7 +193,7 @@ The tool should:
 The tool must:
 
 - scan `.adoc` files — **done** (`internal/scan/scanner.go`)
-- detect relevant macros and reference patterns — **done** (4 regex patterns: `xref:`, `include::`, `image::`, `image:`)
+- detect relevant macros and reference patterns — **done** (regex patterns: `xref:`, `include::`, `image::`, `image:`, `link:{attachmentsdir}/...`, `link:https://...`, bare `https://...` URLs)
 - capture file path, line number, and where practical column number — **done** (line and column captured)
 - avoid obvious false positives in comments and code/literal blocks where feasible — **done** (skips `//` comment lines; tracks block context for `----`, `....`, and backtick-fenced blocks; `include::` always scanned as AsciiDoc processes includes before other substitutions)
 
@@ -234,7 +234,7 @@ It detects:
 - missing include file — **done** (emits `broken-include` error)
 - invalid relative path — **done** (resolved relative to source file directory, checked on filesystem)
 - invalid partial or example target where identifiable — **done** (Antora family form with `$` prefix, e.g. `partial$snippet.adoc`)
-- include cycles if cycle detection is implemented in v1 — **not yet implemented**
+- include cycles — **implemented** (`internal/cycles/cycles.go`, emits `include-cycle` error)
 
 It supports:
 
@@ -251,36 +251,36 @@ It detects:
 - invalid relative image paths — **done** (looks in source module's images directory)
 - case mismatch between referenced path and actual file path — **done** (emits `case-mismatch` warning via case-insensitive fallback)
 
-#### 7.3.4 Attachment reference validation — **Partially Implemented**
-The attachment resolver exists (`internal/resolve/resolver.go`) and the `RefTypeAttachment` and `broken-attachment` rule are defined, but **no scanner pattern currently extracts attachment references** from `.adoc` files. The resolver logic is ready but has no input to process.
+#### 7.3.4 Attachment reference validation — **Implemented**
+The attachment scanner, resolver, and rule are all implemented. The scanner pattern `link:{attachmentsdir}/target[label]` extracts attachment references from `.adoc` files, and the resolver validates them against the index.
 
-Where Antora attachment references are detectable, the tool should validate:
+Where Antora attachment references are detectable, the tool validates:
 
-- missing attachment files — **resolver implemented**, scanner not yet implemented
-- invalid attachment paths — **resolver implemented**, scanner not yet implemented
-- case mismatch — **resolver implemented** (case-insensitive fallback)
+- missing attachment files — **implemented** (emits `broken-attachment` error)
+- invalid attachment paths — **implemented**
+- case mismatch — **implemented** (case-insensitive fallback)
 
 ---
 
-### 7.4 External Link Validation — **Not Yet Implemented**
+### 7.4 External Link Validation — **Implemented**
 
-This feature is optional and disabled by default. It is defined in the PRD but has not been implemented. No scanner pattern extracts HTTP/HTTPS links, and the `--external-links`, `--timeout`, and `--concurrency` CLI flags are not yet available.
+This feature is optional and disabled by default. When enabled via the `--external-links` flag, the scanner extracts `link:https://...[label]` macros and bare `https://...` URLs from `.adoc` files. The link checker (`internal/linkcheck/`) validates each URL using HEAD first with GET fallback on HTTP 405 Method Not Allowed, bounded concurrency via semaphore (default 5, configurable via `--concurrency`), and configurable per-request timeout (default 10s, configurable via `--timeout`).
 
-When enabled, the tool should:
+The tool:
 
-- validate HTTP and HTTPS links
-- use bounded concurrency
-- apply request timeouts
-- follow a limited number of redirects
-- record status code or failure reason
+- validates HTTP and HTTPS links — **done**
+- uses bounded concurrency — **done** (semaphore-based, default 5)
+- applies request timeouts — **done** (default 10s)
+- follows a limited number of redirects — **done**
+- records status code or failure reason — **done**
 
-The tool must avoid making the entire scan unreliable due to flaky external sites.
+The tool avoids making the entire scan unreliable due to flaky external sites — **addressed** (transient failures emit warnings via `external-link-timeout`, confirmed dead links emit errors via `external-link-dead`).
 
-The tool should:
+The tool:
 
-- treat transient network failures differently from definite dead links
-- support retry logic with conservative defaults
-- allow users to skip specific domains in future versions
+- treats transient network failures differently from definite dead links — **done** (timeout = WARNING, dead = ERROR)
+- support retry logic with conservative defaults — **done**
+- allow users to skip specific domains in future versions — **not yet implemented**
 
 ---
 
@@ -303,9 +303,9 @@ Implemented diagnostic categories:
 - `broken-xref` — **implemented** (ERROR)
 - `broken-include` — **implemented** (ERROR)
 - `broken-image` — **implemented** (ERROR)
-- `broken-attachment` — **implemented** (ERROR, but no scanner feeds it)
-- `external-link-dead` — **not yet implemented**
-- `external-link-timeout` — **not yet implemented**
+- `broken-attachment` — **implemented** (ERROR)
+- `external-link-dead` — **implemented** (ERROR)
+- `external-link-timeout` — **implemented** (WARNING)
 - `unresolved-attribute` — **implemented** (WARNING)
 - `case-mismatch` — **implemented** (WARNING)
 
@@ -353,11 +353,11 @@ Implemented configuration options:
 - include or exclude path patterns — **done** (`--include`, `--exclude` flags)
 - verbose logging — **done** (`--verbose` flag)
 
-Not yet implemented:
+Also implemented:
 
-- enable or disable external link checking — **not done** (`--external-links` flag not yet added)
-- maximum concurrency for external link checks — **not done** (`--concurrency` flag not yet added)
-- request timeout for external link checks — **not done** (`--timeout` flag not yet added)
+- enable or disable external link checking — **done** (`--external-links` flag, opt-in)
+- maximum concurrency for external link checks — **done** (`--concurrency` flag, default 5)
+- request timeout for external link checks — **done** (`--timeout` flag, default 10s)
 
 ---
 
@@ -418,9 +418,10 @@ adoclint scan ./docs --fail-on warning  # fail on warnings too
 adoclint scan ./docs --verbose          # verbose logging
 ```
 
-Not yet available:
+Also available:
 ```bash
-adoclint scan ./docs --external-links   # not yet implemented
+adoclint scan ./docs --external-links   # enable external link checking
+adoclint scan ./docs --external-links --timeout 15s --concurrency 10
 ```
 
 ### 9.2 Flags
@@ -435,12 +436,12 @@ Implemented flags:
 --verbose                        ✓ implemented
 ```
 
-Not yet implemented:
+Also implemented:
 
 ```text
---external-links                 ✗ not yet implemented
---timeout <duration>             ✗ not yet implemented
---concurrency <n>                ✗ not yet implemented
+--external-links                 ✓ implemented (opt-in, default: disabled)
+--timeout <duration>             ✓ implemented (default: 10s)
+--concurrency <n>                ✓ implemented (default: 5)
 ```
 
 ---
@@ -611,8 +612,8 @@ Rule ID: `broken-include`, Severity: ERROR
 Report when an `image::` target cannot be resolved to an existing image.
 Rule ID: `broken-image`, Severity: ERROR
 
-#### R004 Broken attachment — **Implemented** (resolver only)
-Report when an attachment reference target cannot be resolved. The rule and resolver exist, but no scanner pattern currently feeds attachment references into the pipeline.
+#### R004 Broken attachment — **Implemented**
+Report when an attachment reference target cannot be resolved. The scanner extracts `link:{attachmentsdir}/...` patterns, and the resolver validates them against the index.
 Rule ID: `broken-attachment`, Severity: ERROR
 
 #### R005 Case mismatch — **Implemented**
@@ -623,16 +624,19 @@ Rule ID: `case-mismatch`, Severity: WARNING
 Warn when a target contains `{...}` attributes that were not resolved. Early-return before resolution to avoid false positives.
 Rule ID: `unresolved-attribute`, Severity: WARNING
 
-### 13.2 Optional Rules for v1 or v1.x — **Not Yet Implemented**
+### 13.2 Optional Rules for v1 or v1.x — **Implemented**
 
-#### R007 Include cycle — **Not yet implemented**
-Detect simple include cycles and report the include chain.
+#### R007 Include cycle — **Implemented**
+Detect simple include cycles and report the include chain. Implemented in `internal/cycles/cycles.go` and `internal/rules/rules.go`.
+Rule ID: `include-cycle`, Severity: ERROR
 
-#### R008 Dead external link — **Not yet implemented**
-Report confirmed dead external URLs.
+#### R008 Dead external link — **Implemented**
+Report confirmed dead external URLs. Implemented as the `external-link-dead` rule.
+Rule ID: `external-link-dead`, Severity: ERROR
 
-#### R009 External link timeout — **Not yet implemented**
-Warn when an external URL cannot be validated due to timeout or transient failure.
+#### R009 External link timeout — **Implemented**
+Warn when an external URL cannot be validated due to timeout or transient failure. Implemented as the `external-link-timeout` rule.
+Rule ID: `external-link-timeout`, Severity: WARNING
 
 ---
 
@@ -663,23 +667,27 @@ The project includes unit tests for:
 - index building — **done** (3 tests in `internal/index/index_test.go`: pages indexing, multiple modules, case-insensitive lookup)
 - path normalisation — **not yet tested directly**
 
-### 15.2 Golden Tests — **Not Yet Implemented**
-The project does not yet include golden-file tests for:
+### 15.2 Golden Tests — **Implemented**
+The project includes 6 golden files in `testdata/golden/`:
 
-- text output
-- JSON output
-- SARIF output
+- `broken-text` — text output for broken references
+- `broken-json` — JSON output for broken references
+- `broken-sarif` — SARIF output for broken references
+- `casemismatch-text` — text output for case mismatch scenarios
+- `cycles-text` — text output for include cycle detection
+- `multicomponent-text` — text output for multi-component layouts
 
-### 15.3 Fixture Repositories — **Partially Implemented**
-The project includes two fixture repos under `testdata/fixtures/`:
+### 15.3 Fixture Repositories — **Implemented**
+The project includes five fixture repos under `testdata/fixtures/`:
 
 - `simple/` — valid Antora structure with working references (multi-module: ROOT + admin)
 - `broken/` — broken xrefs, broken includes, broken images, unresolved attributes
+- `casemismatch/` — case mismatch scenarios for cross-platform compatibility testing
+- `cycles/` — include cycle detection scenarios
+- `multicomponent/` — multi-component layouts
 
 Not yet covered:
 
-- case mismatch scenarios (dedicated fixture)
-- multi-component layouts
 - multi-version layouts
 
 ### 15.4 Cross-Platform Testing — **Not Yet Implemented**
@@ -739,16 +747,13 @@ Delivered:
 - path include/exclude controls — **done** (`--include`, `--exclude` flags)
 - improved handling of unresolved attributes — **done** (early-return with warning for `{...}` targets)
 
-### Milestone 3: Advanced Validation — **Partially Complete**
+### Milestone 3: Advanced Validation — **Complete**
 Delivered:
 
 - SARIF output — **done** (SARIF 2.1.0 with full compliance)
 - case mismatch detection — **done** (case-insensitive fallback with warning)
-
-Not yet delivered:
-
-- optional external link checking — **not done**
-- include cycle detection — **not done**
+- optional external link checking — **done** (opt-in via `--external-links`, HEAD with GET fallback, bounded concurrency)
+- include cycle detection — **done** (`internal/cycles/cycles.go`, emits `include-cycle` error)
 
 ### Milestone 4: Hardening — **Not Yet Started**
 Not yet delivered:
@@ -767,7 +772,7 @@ Resolved during implementation:
 1. **How much attribute resolution should v1 support?** — **Resolved:** None. Targets containing `{...}` emit a warning and are skipped (no attribute expansion).
 2. Should nav files be explicitly validated in v1? — **Still open.**
 3. **Should anchors within pages be validated in v1 or deferred?** — **Resolved:** Deferred. Fragments are extracted from xrefs but not validated against page content.
-4. Should external link checking use `HEAD`, `GET`, or fallback logic? — **Still open** (external link checking not yet implemented).
+4. Should external link checking use `HEAD`, `GET`, or fallback logic? — **Resolved:** HEAD request first, GET fallback on HTTP 405 Method Not Allowed. Bounded concurrency (default 5) with configurable timeout (default 10s).
 5. **How should the tool treat unresolved dynamic targets: warning, skip, or error?** — **Resolved:** Warning. The `unresolved-attribute` rule emits `SeverityWarning`.
 6. **How aggressively should literal blocks and comments be ignored?** — **Resolved:** Comments (`//`) are skipped; code/literal blocks (`----`, `....`, backtick fences) are tracked. `xref` and `image` are skipped inside blocks, but `include::` is always scanned (AsciiDoc processes includes first).
 7. **Should the tool require an Antora root, or support partial repo scans?** — **Resolved:** The tool scans from a given root directory and discovers all `antora.yml` files beneath it. It does not require a single Antora root.
@@ -778,9 +783,9 @@ Resolved during implementation:
 
 The recommended product decisions for v1 have all been implemented:
 
-- support only **high-confidence checks** — **adopted** (6 rules with clear semantics)
+- support only **high-confidence checks** — **adopted** (9 rules with clear semantics)
 - prefer **warning** over false-positive **error** for unresolved attribute-heavy cases — **adopted** (`unresolved-attribute` is WARNING)
-- keep external link checks **off by default** — **adopted** (not yet implemented, but designed as opt-in)
+- keep external link checks **off by default** — **adopted** (implemented as opt-in via `--external-links` flag)
 - ship **text + JSON** first — **adopted** (both implemented)
 - add **SARIF** in the next increment — **adopted** (SARIF 2.1.0 also implemented ahead of schedule)
 - build a **clean resolver layer** early — **adopted** (isolated `internal/resolve` package with per-type resolvers)
@@ -817,7 +822,7 @@ The MVP acceptance criteria and their status:
 - the tool exits non-zero when configured failure conditions are met — **met**
 - the tool runs successfully on Linux, macOS, and Windows — **not yet verified** (cross-platform testing pending)
 - the tool can be distributed as a single Go binary — **met** (`go build -o adoclint ./cmd/adoclint/main.go`)
-- unit and fixture tests cover the main resolution flows — **met** (14 tests, 2 fixture repos)
+- unit and fixture tests cover the main resolution flows — **met** (14+ tests, 5 fixture repos, 6 golden files)
 
 ---
 
@@ -864,33 +869,28 @@ The defining product decision for v1 is to keep the implementation **pragmatic, 
 | Resource indexing | Complete |
 | File scanning | Complete |
 | Reference resolution | Complete (4 reference types) |
-| Rule evaluation | Complete (6 rules) |
+| Rule evaluation | Complete (9 rules) |
 | Reporting | Complete (3 formats) |
-| CLI | Complete (5 flags) |
-| Unit tests | 14 tests across 4 packages |
-| Fixture repos | 2 (valid + broken) |
+| CLI | Complete (8 flags) |
+| Unit tests | 14+ tests across 4 packages |
+| Fixture repos | 5 (simple, broken, casemismatch, cycles, multicomponent) |
 
 ### 25.2 What Is Implemented
 
 - **6-stage pipeline**: repo → index → scan → resolve → rules → report
-- **Scanner**: Line-oriented regex scanner detecting `xref:`, `include::`, `image::`, and `image:` with comment and code block awareness
+- **Scanner**: Line-oriented regex scanner detecting `xref:`, `include::`, `image::`, `image:`, `link:{attachmentsdir}/...`, `link:https://...`, and bare `https://...` URLs with comment and code block awareness
 - **Resolver**: Antora-aware resolution supporting same-module, cross-module, cross-component, and versioned references; relative paths; Antora family form (`$` prefix); case-insensitive fallback
-- **6 rules**: `broken-xref`, `broken-include`, `broken-image`, `broken-attachment`, `case-mismatch`, `unresolved-attribute`
+- **9 rules**: `broken-xref`, `broken-include`, `broken-image`, `broken-attachment`, `case-mismatch`, `unresolved-attribute`, `include-cycle`, `external-link-dead`, `external-link-timeout`
 - **3 output formats**: text, JSON, SARIF 2.1.0
-- **CLI flags**: `--format`, `--fail-on`, `--verbose`, `--include`, `--exclude`
+- **CLI flags**: `--format`, `--fail-on`, `--verbose`, `--include`, `--exclude`, `--external-links`, `--timeout`, `--concurrency`
 - **Exit codes**: 0 (clean), 1 (issues found), 2 (runtime error)
 
 ### 25.3 What Remains
 
 | Feature | PRD Section | Priority |
 |---------|-------------|----------|
-| Attachment scanner pattern | 7.3.4 | Medium |
-| External link validation | 7.4 | Optional |
-| Include cycle detection | 13.2 R007 | Optional |
 | Fragment/anchor validation | 19.3 | Deferred |
-| Golden-file tests | 15.2 | Medium |
 | Cross-platform testing | 15.4 | Medium |
-| Multi-component/version fixtures | 15.3 | Medium |
 | Nav file validation | 19.2 | Open |
 | Config file support | 7.8 | Future |
 | Performance optimisation | Milestone 4 | Future |

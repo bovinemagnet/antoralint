@@ -38,6 +38,8 @@ func main() {
 		externalLinks bool
 		timeout       time.Duration
 		concurrency   int
+		idPrefix      string
+		idSeparator   string
 	)
 
 	scanCmd := &cobra.Command{
@@ -80,10 +82,13 @@ func main() {
 			scanOpts := scan.ScanOptions{
 				ExtractExternalLinks: externalLinks,
 			}
-			resolver := resolve.New(idx)
+			anchorCache := scan.NewAnchorCache(idPrefix, idSeparator)
+			resolver := resolve.New(idx, anchorCache)
 			var allDiagnostics []*model.Diagnostic
 			var includeResults []*resolve.Result
 			var linkRefs []*model.Reference
+			// Track which files include which, for include chain reporting
+			includedFrom := make(map[string]model.IncludeStep) // key=included file abs path
 
 			for _, res := range idx.Resources {
 				if res.Family != model.FamilyPages && res.Family != model.FamilyPartials {
@@ -133,6 +138,15 @@ func main() {
 							Found:    true,
 						}
 						includeResults = append(includeResults, cycleResult)
+
+						// Track include provenance for chain reporting
+						if result.Resource != nil {
+							relSrc, _ := filepath.Rel(absRoot, absSourceFile)
+							includedFrom[result.Resource.AbsPath] = model.IncludeStep{
+								File: filepath.ToSlash(relSrc),
+								Line: ref.Line,
+							}
+						}
 					}
 				}
 			}
@@ -152,6 +166,16 @@ func main() {
 				}
 				linkDiags := checkExternalLinks(linkRefs, concurrency, timeout)
 				allDiagnostics = append(allDiagnostics, linkDiags...)
+			}
+
+			// Annotate diagnostics with include chain information
+			if len(includedFrom) > 0 {
+				for _, d := range allDiagnostics {
+					chain := buildIncludeChain(d.File, includedFrom, absRoot)
+					if len(chain) > 0 {
+						d.IncludeChain = chain
+					}
+				}
 			}
 
 			// Write output
@@ -177,6 +201,8 @@ func main() {
 	scanCmd.Flags().BoolVar(&externalLinks, "external-links", false, "Enable external link checking")
 	scanCmd.Flags().DurationVar(&timeout, "timeout", 10*time.Second, "Timeout per external link check")
 	scanCmd.Flags().IntVar(&concurrency, "concurrency", 5, "Maximum concurrent external link checks")
+	scanCmd.Flags().StringVar(&idPrefix, "id-prefix", "_", "Asciidoctor idprefix for heading ID generation")
+	scanCmd.Flags().StringVar(&idSeparator, "id-separator", "_", "Asciidoctor idseparator for heading ID generation")
 
 	rootCmd.AddCommand(scanCmd)
 
@@ -212,6 +238,32 @@ func checkExternalLinks(refs []*model.Reference, concurrency int, timeout time.D
 		}
 	}
 	return diags
+}
+
+// buildIncludeChain traces the include provenance for a diagnostic file.
+// It returns the chain from outermost includer to innermost, or nil if
+// the file is not included from anywhere.
+func buildIncludeChain(relFile string, includedFrom map[string]model.IncludeStep, absRoot string) []model.IncludeStep {
+	absFile := filepath.Join(absRoot, filepath.FromSlash(relFile))
+	var chain []model.IncludeStep
+	visited := make(map[string]bool)
+
+	current := absFile
+	for {
+		if visited[current] {
+			break // cycle protection
+		}
+		visited[current] = true
+
+		step, ok := includedFrom[current]
+		if !ok {
+			break
+		}
+		chain = append(chain, step)
+		current = filepath.Join(absRoot, filepath.FromSlash(step.File))
+	}
+
+	return chain
 }
 
 func exitWithCode(diagnostics []*model.Diagnostic, failOn string) error {

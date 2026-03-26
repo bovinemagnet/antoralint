@@ -1,0 +1,2 @@
+ERROR broken-xref modules/ROOT/partials/wrapper.adoc:5 xref target not found: nonexistent-page.adoc
+      included from modules/ROOT/pages/main.adoc:5

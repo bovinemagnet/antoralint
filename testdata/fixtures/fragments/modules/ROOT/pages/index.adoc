@@ -1,0 +1,15 @@
+= Index Page
+
+== Overview
+
+Valid fragment references:
+
+* xref:target.adoc#_first_section[First Section]
+* xref:target.adoc#custom-anchor[Custom Anchor]
+* xref:target.adoc#shorthand-id[Shorthand]
+* xref:target.adoc#inline-anchor[Inline]
+
+Invalid fragment references:
+
+* xref:target.adoc#nonexistent-section[Missing Section]
+* xref:target.adoc#_typo_section[Typo Section]

@@ -42,7 +42,8 @@ func runPipeline(t *testing.T, fixtureDir string, format report.Format) []byte {
 		t.Fatalf("Build: %v", err)
 	}
 
-	resolver := resolve.New(idx)
+	anchorCache := scan.NewAnchorCache("_", "_")
+	resolver := resolve.New(idx, anchorCache)
 	var allDiags []*model.Diagnostic
 
 	for _, res := range idx.Resources {
@@ -147,9 +148,145 @@ func TestGolden_MultiComponentText(t *testing.T) {
 	assertGolden(t, "multicomponent-text.golden", output)
 }
 
+func TestGolden_FragmentsText(t *testing.T) {
+	output := runPipeline(t, fixturePath("fragments"), report.FormatText)
+	assertGolden(t, "fragments-text.golden", output)
+}
+
+func TestGolden_IncludeChainText(t *testing.T) {
+	output := runFullPipeline(t, fixturePath("includechain"), report.FormatText)
+	assertGolden(t, "includechain-text.golden", output)
+}
+
 func TestGolden_CyclesText(t *testing.T) {
 	output := runPipelineWithCycles(t, fixturePath("cycles"), report.FormatText)
 	assertGolden(t, "cycles-text.golden", output)
+}
+
+// runFullPipeline runs the full pipeline including cycle detection and include chain reporting.
+func runFullPipeline(t *testing.T, fixtureDir string, format report.Format) []byte {
+	t.Helper()
+
+	absRoot, err := filepath.Abs(fixtureDir)
+	if err != nil {
+		t.Fatalf("Abs: %v", err)
+	}
+
+	components, err := repo.Discover(absRoot)
+	if err != nil {
+		t.Fatalf("Discover: %v", err)
+	}
+
+	idx, err := index.Build(absRoot, components)
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+
+	anchorCache := scan.NewAnchorCache("_", "_")
+	resolver := resolve.New(idx, anchorCache)
+	var allDiags []*model.Diagnostic
+	var includeResults []*resolve.Result
+	includedFrom := make(map[string]model.IncludeStep)
+
+	for _, res := range idx.Resources {
+		if res.Family != model.FamilyPages && res.Family != model.FamilyPartials {
+			continue
+		}
+		if !strings.HasSuffix(res.AbsPath, ".adoc") {
+			continue
+		}
+
+		refs, err := scan.ScanFile(res.AbsPath, res.Component, res.Version, res.Module, res.Family)
+		if err != nil {
+			t.Logf("WARNING: could not scan %s: %v", res.RelPath, err)
+			continue
+		}
+
+		for _, ref := range refs {
+			absSourceFile := ref.SourceFile
+			relPath, _ := filepath.Rel(absRoot, ref.SourceFile)
+			ref.SourceFile = filepath.ToSlash(relPath)
+
+			result := resolver.Resolve(ref)
+			diags := rules.Evaluate(result)
+			allDiags = append(allDiags, diags...)
+
+			if ref.RefType == model.RefTypeInclude && result.Found {
+				cycleResult := &resolve.Result{
+					Ref: &model.Reference{
+						SourceFile: absSourceFile,
+						RefType:    ref.RefType,
+						Target:     ref.Target,
+					},
+					Resource: result.Resource,
+					Found:    true,
+				}
+				includeResults = append(includeResults, cycleResult)
+
+				if result.Resource != nil {
+					relSrc, _ := filepath.Rel(absRoot, absSourceFile)
+					includedFrom[result.Resource.AbsPath] = model.IncludeStep{
+						File: filepath.ToSlash(relSrc),
+						Line: ref.Line,
+					}
+				}
+			}
+		}
+	}
+
+	// Detect cycles
+	graph := cycles.Build(includeResults)
+	detected := graph.DetectCycles()
+	if len(detected) > 0 {
+		cycleDiags := rules.EvaluateCycles(detected, absRoot)
+		allDiags = append(allDiags, cycleDiags...)
+	}
+
+	// Annotate diagnostics with include chain
+	for _, d := range allDiags {
+		absFile := filepath.Join(absRoot, filepath.FromSlash(d.File))
+		chain := buildTestIncludeChain(absFile, includedFrom, absRoot)
+		if len(chain) > 0 {
+			d.IncludeChain = chain
+		}
+	}
+
+	sort.Slice(allDiags, func(i, j int) bool {
+		if allDiags[i].File != allDiags[j].File {
+			return allDiags[i].File < allDiags[j].File
+		}
+		if allDiags[i].Line != allDiags[j].Line {
+			return allDiags[i].Line < allDiags[j].Line
+		}
+		return allDiags[i].RuleID < allDiags[j].RuleID
+	})
+
+	var buf bytes.Buffer
+	w := report.New(format, &buf)
+	if err := w.Write(allDiags); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+
+	return buf.Bytes()
+}
+
+func buildTestIncludeChain(absFile string, includedFrom map[string]model.IncludeStep, absRoot string) []model.IncludeStep {
+	var chain []model.IncludeStep
+	visited := make(map[string]bool)
+	current := absFile
+	for {
+		if visited[current] {
+			break
+		}
+		visited[current] = true
+		step, ok := includedFrom[current]
+		if !ok {
+			break
+		}
+		chain = append(chain, step)
+		current = filepath.Join(absRoot, filepath.FromSlash(step.File))
+	}
+	return chain
 }
 
 // runPipelineWithCycles runs the full pipeline including cycle detection.
@@ -171,7 +308,8 @@ func runPipelineWithCycles(t *testing.T, fixtureDir string, format report.Format
 		t.Fatalf("Build: %v", err)
 	}
 
-	resolver := resolve.New(idx)
+	anchorCache := scan.NewAnchorCache("_", "_")
+	resolver := resolve.New(idx, anchorCache)
 	var allDiags []*model.Diagnostic
 	var includeResults []*resolve.Result
 

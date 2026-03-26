@@ -19,8 +19,9 @@ const (
 	RuleCaseMismatch     = "case-mismatch"
 	RuleUnresolvedAttr   = "unresolved-attribute"
 	RuleIncludeCycle       = "include-cycle"
-	RuleExternalLinkDead   = "external-link-dead"
+	RuleExternalLinkDead    = "external-link-dead"
 	RuleExternalLinkTimeout = "external-link-timeout"
+	RuleBrokenFragment      = "broken-fragment"
 )
 
 // Evaluate converts a resolve.Result into zero or more Diagnostics.
@@ -48,6 +49,18 @@ func Evaluate(result *resolve.Result) []*model.Diagnostic {
 			Line:     ref.Line,
 			Column:   ref.Column,
 			Target:   ref.Target,
+		}}
+	}
+
+	if result.Found && result.FragmentNotFound {
+		return []*model.Diagnostic{{
+			Severity: model.SeverityWarning,
+			RuleID:   RuleBrokenFragment,
+			Message:  fmt.Sprintf("fragment not found in target: %s#%s", ref.Target, result.Fragment),
+			File:     ref.SourceFile,
+			Line:     ref.Line,
+			Column:   ref.Column,
+			Target:   ref.Target + "#" + result.Fragment,
 		}}
 	}
 

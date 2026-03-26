@@ -92,6 +92,54 @@ func TestEvaluate_CaseMismatch(t *testing.T) {
 	}
 }
 
+func TestEvaluate_BrokenFragment(t *testing.T) {
+	result := &resolve.Result{
+		Ref: &model.Reference{
+			RefType:    model.RefTypeXref,
+			Target:     "valid-page.adoc",
+			SourceFile: "docs/page.adoc",
+			Line:       15,
+		},
+		Found:            true,
+		FragmentNotFound: true,
+		Fragment:         "nonexistent",
+		Resource: &model.Resource{
+			RelPath: "modules/ROOT/pages/valid-page.adoc",
+		},
+	}
+	diags := Evaluate(result)
+	if len(diags) != 1 {
+		t.Fatalf("expected 1 diagnostic for broken fragment, got %d", len(diags))
+	}
+	if diags[0].RuleID != RuleBrokenFragment {
+		t.Errorf("expected ruleID %q, got %q", RuleBrokenFragment, diags[0].RuleID)
+	}
+	if diags[0].Severity != model.SeverityWarning {
+		t.Errorf("expected warning severity, got %s", diags[0].Severity)
+	}
+}
+
+func TestEvaluate_ValidFragment(t *testing.T) {
+	result := &resolve.Result{
+		Ref: &model.Reference{
+			RefType:    model.RefTypeXref,
+			Target:     "valid-page.adoc",
+			SourceFile: "docs/page.adoc",
+			Line:       3,
+			Fragment:   "existing-section",
+		},
+		Found:            true,
+		FragmentNotFound: false,
+		Resource: &model.Resource{
+			RelPath: "modules/ROOT/pages/valid-page.adoc",
+		},
+	}
+	diags := Evaluate(result)
+	if len(diags) != 0 {
+		t.Errorf("expected 0 diagnostics for valid fragment, got %d", len(diags))
+	}
+}
+
 func TestEvaluateCycles(t *testing.T) {
 	cycles := [][]string{
 		{"/tmp/a.adoc", "/tmp/b.adoc", "/tmp/a.adoc"},

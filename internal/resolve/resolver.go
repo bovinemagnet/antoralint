@@ -7,6 +7,7 @@ import (
 
 	"github.com/bovinemagnet/antoralint/internal/index"
 	"github.com/bovinemagnet/antoralint/internal/model"
+	"github.com/bovinemagnet/antoralint/internal/scan"
 )
 
 // Result represents the result of resolving a reference.
@@ -16,16 +17,24 @@ type Result struct {
 	Found             bool
 	CaseMismatch      bool
 	HasUnresolvedAttr bool
+	FragmentNotFound  bool   // true if fragment was specified but not found in target
+	Fragment          string // the fragment that was looked up
 }
 
 // Resolver resolves references against an index.
 type Resolver struct {
-	idx *index.Index
+	idx         *index.Index
+	anchorCache *scan.AnchorCache
 }
 
-// New creates a new Resolver.
-func New(idx *index.Index) *Resolver {
-	return &Resolver{idx: idx}
+// New creates a new Resolver. If anchorCache is non-nil, fragment validation
+// is enabled for xref references.
+func New(idx *index.Index, anchorCache ...*scan.AnchorCache) *Resolver {
+	r := &Resolver{idx: idx}
+	if len(anchorCache) > 0 {
+		r.anchorCache = anchorCache[0]
+	}
+	return r
 }
 
 // Resolve attempts to resolve a reference and returns a Result.
@@ -121,6 +130,7 @@ func (r *Resolver) resolveXref(ref *model.Reference) *Result {
 	if res := r.idx.ByLogicalID[logicalID]; res != nil {
 		result.Resource = res
 		result.Found = true
+		r.checkFragment(result, ref)
 		return result
 	}
 
@@ -129,10 +139,26 @@ func (r *Resolver) resolveXref(ref *model.Reference) *Result {
 		result.Resource = res
 		result.Found = true
 		result.CaseMismatch = true
+		r.checkFragment(result, ref)
 		return result
 	}
 
 	return result
+}
+
+// checkFragment validates that a fragment exists in the resolved target page.
+func (r *Resolver) checkFragment(result *Result, ref *model.Reference) {
+	if ref.Fragment == "" || r.anchorCache == nil || result.Resource == nil {
+		return
+	}
+	found, err := r.anchorCache.HasAnchor(result.Resource.AbsPath, ref.Fragment)
+	if err != nil {
+		return // silently skip on read errors
+	}
+	if !found {
+		result.FragmentNotFound = true
+		result.Fragment = ref.Fragment
+	}
 }
 
 // resolveInclude resolves an include:: target.

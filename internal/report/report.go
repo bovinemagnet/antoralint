@@ -51,25 +51,33 @@ func (w *Writer) writeText(diagnostics []*model.Diagnostic) error {
 		}
 		fmt.Fprintf(w.out, "%s %s %s:%d %s\n",
 			severity, d.RuleID, d.File, d.Line, d.Message)
+		if len(d.IncludeChain) > 0 {
+			parts := make([]string, len(d.IncludeChain))
+			for i, step := range d.IncludeChain {
+				parts[i] = fmt.Sprintf("%s:%d", step.File, step.Line)
+			}
+			fmt.Fprintf(w.out, "      included from %s\n", strings.Join(parts, " -> "))
+		}
 	}
 	return nil
 }
 
 // jsonDiagnostic is the JSON-serializable form of a diagnostic.
 type jsonDiagnostic struct {
-	Severity string `json:"severity"`
-	RuleID   string `json:"ruleId"`
-	File     string `json:"file"`
-	Line     int    `json:"line"`
-	Column   int    `json:"column,omitempty"`
-	Message  string `json:"message"`
-	Target   string `json:"target,omitempty"`
+	Severity     string              `json:"severity"`
+	RuleID       string              `json:"ruleId"`
+	File         string              `json:"file"`
+	Line         int                 `json:"line"`
+	Column       int                 `json:"column,omitempty"`
+	Message      string              `json:"message"`
+	Target       string              `json:"target,omitempty"`
+	IncludeChain []model.IncludeStep `json:"includeChain,omitempty"`
 }
 
 func (w *Writer) writeJSON(diagnostics []*model.Diagnostic) error {
 	out := make([]jsonDiagnostic, 0, len(diagnostics))
 	for _, d := range diagnostics {
-		out = append(out, jsonDiagnostic{
+		jd := jsonDiagnostic{
 			Severity: string(d.Severity),
 			RuleID:   d.RuleID,
 			File:     d.File,
@@ -77,7 +85,11 @@ func (w *Writer) writeJSON(diagnostics []*model.Diagnostic) error {
 			Column:   d.Column,
 			Message:  d.Message,
 			Target:   d.Target,
-		})
+		}
+		if len(d.IncludeChain) > 0 {
+			jd.IncludeChain = d.IncludeChain
+		}
+		out = append(out, jd)
 	}
 	enc := json.NewEncoder(w.out)
 	enc.SetIndent("", "  ")
@@ -103,11 +115,17 @@ func (w *Writer) writeSARIF(diagnostics []*model.Diagnostic) error {
 	type sarifLocation struct {
 		PhysicalLocation sarifPhysicalLocation `json:"physicalLocation"`
 	}
+	type sarifRelatedLocation struct {
+		ID               int                     `json:"id"`
+		Message          sarifMessage             `json:"message"`
+		PhysicalLocation sarifPhysicalLocation    `json:"physicalLocation"`
+	}
 	type sarifResult struct {
-		RuleID    string          `json:"ruleId"`
-		Level     string          `json:"level"`
-		Message   sarifMessage    `json:"message"`
-		Locations []sarifLocation `json:"locations"`
+		RuleID           string                   `json:"ruleId"`
+		Level            string                   `json:"level"`
+		Message          sarifMessage             `json:"message"`
+		Locations        []sarifLocation          `json:"locations"`
+		RelatedLocations []sarifRelatedLocation   `json:"relatedLocations,omitempty"`
 	}
 	type sarifRun struct {
 		Tool    map[string]interface{} `json:"tool"`
@@ -131,7 +149,7 @@ func (w *Writer) writeSARIF(diagnostics []*model.Diagnostic) error {
 		if col == 0 {
 			col = 1
 		}
-		results = append(results, sarifResult{
+		sr := sarifResult{
 			RuleID:  d.RuleID,
 			Level:   level,
 			Message: sarifMessage{Text: d.Message},
@@ -141,7 +159,18 @@ func (w *Writer) writeSARIF(diagnostics []*model.Diagnostic) error {
 					Region:           sarifRegion{StartLine: d.Line, StartColumn: col},
 				},
 			}},
-		})
+		}
+		for i, step := range d.IncludeChain {
+			sr.RelatedLocations = append(sr.RelatedLocations, sarifRelatedLocation{
+				ID:      i + 1,
+				Message: sarifMessage{Text: fmt.Sprintf("included from %s:%d", step.File, step.Line)},
+				PhysicalLocation: sarifPhysicalLocation{
+					ArtifactLocation: sarifArtifactLocation{URI: step.File},
+					Region:           sarifRegion{StartLine: step.Line, StartColumn: 1},
+				},
+			})
+		}
+		results = append(results, sr)
 	}
 
 	root := sarifRoot{
